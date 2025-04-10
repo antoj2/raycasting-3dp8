@@ -191,50 +191,44 @@ function mvspr2pnt(sprite,pnt)
 		sprite.x=nx
 		sprite.y=ny
 	end
-	if rnd(100) < 5 then
-		local path=astar({sprite.x,sprite.y},{pnt.x,pnt.y})
-		if path~=nil then
-			sprite.path=path
-			local output = ins(path,2)
-			printh(output)
-		end
+	local path=astar({sprite.x,sprite.y},{pnt.x,pnt.y})
+	if path~=nil then
+		sprite.path=path
+		local output = ins(path)
+		printh(output)
 	end
 end
 
 --A* pathfinding algorithm
 --Starting point as {x,y}, end point as {x,y}
---returns the closed list of node positions as {{x,y},}
 function astar(spnt,epnt)
 	spnt={flr(spnt[1]/8),flr(spnt[2]/8)}
 	epnt={flr(epnt[1]/8),flr(epnt[2]/8)}
 	printh("spnt: "..ins(spnt))
 	printh("epnt: "..ins(epnt))
 
-	local function point_key(p)
-		return p[1]..","..p[2]
-	end
-
-	local open={[point_key(spnt)]=spnt}
+	local open={[pntkey(spnt)]=spnt}
 	local closed={}
 
-	local gscore={[point_key(spnt)]=0}
-	local fscore={[point_key(spnt)]=dist(spnt[1],spnt[2],epnt[1],epnt[2])}
+	local gscore={[pntkey(spnt)]=0}
+	local fscore={[pntkey(spnt)]=dist(spnt[1],spnt[2],epnt[1],epnt[2])}
 
 	while next(open) do
-		local current=minf(open,fscore)
+		local currentkey,current=minf(open,fscore)
 		if current[1]==epnt[1] and current[2]==epnt[2] then
 			return closed
 		end
 
-		del(open,current)
+		open[currentkey]=nil
+		closed[currentkey]=current
 		for n in all(neighbors(current)) do
-			g=gscore[current]+dist(current[1],current[2],n[1],n[2])
-			if g<(vbyvkey(gscore,n) or 32767) then
-				closed[n]=current
-				gscore[n]=g
-				fscore[n]=g+dist(n[1],n[2],epnt[1],epnt[2])
-				if not intb(open,n) then
-					add(open,n)
+			local nkey=pntkey(n)
+			if not closed[nkey] then
+				g=gscore[currentkey]+dist(current[1],current[2],n[1],n[2])
+				if not open[nkey] or g<gscore[nkey] then
+					gscore[nkey]=g
+					fscore[nkey]=g+dist(n[1],n[2],epnt[1],epnt[2])
+					open[nkey]=n
 				end
 			end
 		end
@@ -244,40 +238,32 @@ function astar(spnt,epnt)
 	return nil
 end
 
-function intb(t,a)
-	for v in all(t) do
-		if a[1]==v[1] and a[2]==v[2] then return true end
-	end
-	return false
+function pntkey(p)
+	return p[1]..','..p[2]
 end
 
-function vbyvkey(t,a)
-	for k,v in pairs(t) do
-		if a[1]==k[1] and a[2]==k[2] then return v end
-	end
-	return nil
-end
-
-function minf(set,f)
-	local min=999999
-	local minf=nil
-	for i in all(set) do
-		local fval=f[i]
-		if fval<min then
-			minf=i
-			min=fval
+function minf(open,fscore)
+	local minkey,minpnt=nil,nil
+	local min=32767
+	for k,v in pairs(open) do
+		local f=fscore[k] or 32767
+		if f<min then
+			min=f
+			minkey=k
+			minpnt=v
 		end
 	end
-	return minf
+	printh("minkey: "..minkey.." minpnt: "..ins(minpnt))
+	return minkey,minpnt
 end
 
-function neighbors(node,closed)
+function neighbors(node)
 	local dirs={{1,0},{1,1},{0,1},{-1,1},{-1,0},{-1,-1},{0,-1},{1,-1}}
 	local n={}
 	for p in all(dirs) do
-		local nx=flr(node[1]+p[1]/8)
-		local ny=flr(node[2]+p[2]/8)
-		if mget(nx,ny)==0 and not intb(closed,{nx,ny}) then
+		local nx=node[1]+p[1]
+		local ny=node[2]+p[2]
+		if mget(nx,ny)==0 then
 			add(n,{nx,ny})
 		end
 	end
