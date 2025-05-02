@@ -5,14 +5,16 @@ __lua__
 function _init()
 	--player
 	--fov is 110 degrees in revolutions
-	p={x=10,y=10,a=0.01,spd=0.7,fov=0.25,cosa=cos(0.01),sina=sin(0.01)}
-	sens=0.013
+	p = {x=10,y=10,a=0.01,spd=0.7,fov=0.25,cosa=cos(0.01),sina=sin(0.01),sens=0.013}
 
-	mm={h=32,w=32}	
+	mm={h=32,w=32}
+
+	-- last player position
+	lastppos={x=0,y=0}
 
 	sprites={
 		-- barrel, example enemy
-		{s=6,w=16,h=16,ws=2,hs=2,x=35,y=35,spd=0.25,path={}},
+		{s=6,w=16,h=16,ws=2,hs=2,x=35,y=35,spd=0.25,path={},goal={},lastpos={},step=1},
 	}
 
 	lines={}
@@ -22,49 +24,49 @@ end
 
 function _update()
 	if btn(0,0) then
-		p.a=(p.a-sens)%1
+		p.a = (p.a - p.sens) % 1
 	end
 	if btn(1,0) then
-		p.a=(p.a+sens)%1
+		p.a = (p.a + p.sens) % 1 
 	end
-	p.cosa=cos(p.a)
-	p.sina=sin(p.a)
+	p.cosa = cos(p.a)
+	p.sina = sin(p.a)
 
-	if btn(2,1) then
-		local nx=p.x+p.cosa*p.spd
-		local ny=p.y+p.sina*p.spd
-		if mget(flr(nx/8),flr(ny/8))==0 then
-			p.x=nx
-			p.y=ny
+	if btn(2, 1) then
+		local nx = p.x + p.cosa * p.spd
+		local ny=p.y + p.sina * p.spd
+		if mget(flr(nx / 8), flr(ny / 8)) == 0 then
+			p.x = nx
+			p.y = ny
 		end
 	end
-	if btn(3,1) then
-		local nx=p.x-p.cosa*p.spd
-		local ny=p.y-p.sina*p.spd
-		if mget(flr(nx/8),flr(ny/8))==0 then
-			p.x=nx
-			p.y=ny
+	if btn(3, 1) then
+		local nx = p.x - p.cosa * p.spd
+		local ny = p.y - p.sina * p.spd
+		if mget(flr(nx / 8), flr(ny / 8)) == 0 then
+			p.x = nx
+			p.y = ny
 		end
 	end
-	if btn(1,1) then
-		local strafe_ang=p.a+0.25
-		local nx=p.x+cos(strafe_ang)*p.spd
-		local ny=p.y+sin(strafe_ang)*p.spd
-		if mget(flr(nx/8),flr(ny/8))==0 then
-			p.x=nx
-			p.y=ny
+	if btn(1, 1) then
+		local strafe_ang = p.a + 0.25
+		local nx = p.x + cos(strafe_ang) * p.spd
+		local ny=p.y + sin(strafe_ang) * p.spd
+		if mget(flr(nx / 8), flr(ny / 8)) == 0 then
+			p.x = nx
+			p.y = ny
 		end
 	end
-	if btn(0,1) then
-		local strafe_ang=p.a-0.25
-		local nx=p.x+cos(strafe_ang)*p.spd
-		local ny=p.y+sin(strafe_ang)*p.spd
-		if mget(flr(nx/8),flr(ny/8))==0 then
-			p.x=nx
-			p.y=ny
+	if btn(0, 1) then
+		local strafe_ang = p.a - 0.25
+		local nx = p.x + cos(strafe_ang) * p.spd
+		local ny = p.y + sin(strafe_ang) * p.spd
+		if mget(flr(nx / 8), flr(ny / 8)) == 0 then
+			p.x = nx
+			p.y = ny
 		end
 	end
-	dir_ray=shoot_ray(p.x,p.y,p.a)
+	--dir_ray=shoot_ray(p.x,p.y,p.a)
 end
 
 function _draw()
@@ -79,34 +81,48 @@ function _draw()
 
 	pal()
 
-	for i=0,127 do
-		local ang=p.a+(i-64)*(p.fov/128)
-		local ray=shoot_ray(p.x,p.y,ang)
-		lines[i+1]=ray.dist
-		local wallh=128/max(1,ray.dist)
-		local topy=64-wallh/2*6
-		local boty=64+wallh/2
+	for i=0, 127 do
+		local ang = p.a + (i - 64) * (p.fov / 128)
+		local ray = shoot_ray(p.x, p.y , ang)
+		lines[i + 1] = ray.dist
+		local wallh = 128 / max(1, ray.dist)
+		local topy = 64 - wallh / 2 * 6
+		local boty = 64 + wallh / 2
 
-		local wallh=boty-topy
-		for y=topy,boty do
-			local sx=ray.s*8+flr(ray.tex*16)
-			local rely=(y-topy)/wallh
-			local sy=flr(rely*16)
-			local col=sget(sx,sy)
-			pset(i,y,col)
+		local wallh = boty - topy
+		for y=topy, boty do
+			local sx = ray.s * 8 + flr(ray.tex * 16)
+			local rely = (y - topy) / wallh
+			local sy = flr(rely * 16)
+			local col = sget(sx, sy)
+			pset(i, y, col)
 		end
 	end
 
-	palt(8,true)
-	palt(0,false)
-	pal(14,132,1)
-	--pal(2,132,0)
+	palt(8, true)
+	palt(0, false)
+	pal(14, 132, 1)
+
 	--draw sprites
 	for sprite in all(sprites) do
-		mvspr2pnt(sprite,p)
+		-- if the player has moved into a new map tile, recompute path
+		if lastppos[1] ~= flr(p.x / 8) or lastppos[2] ~= flr(p.y / 8) then
+			local path=astar({sprite.x,sprite.y}, {p.x,p.y})
+			if sprite.path then
+				sprite.path = path
+				sprite.step = 1
+				printh("path "..ins(sprite.path).." "..time())
+				printh("goal: "..ins(sprite.goal).." "..time())
+			end
+			lastppos={flr(p.x / 8), flr(p.y / 8)}
+		end
 
-		local posx=sprite.x-p.x
-		local posy=sprite.y-p.y
+		sprite.goal = sprite.path[#sprite.path - sprite.step]
+
+		mvspr2goal(sprite)
+
+		local posx = sprite.x - p.x
+		local posy = sprite.y - p.y
 
     local tx = p.cosa * posy - p.sina * posx
 		local ty = -p.sina * posy - p.cosa * posx
@@ -119,27 +135,25 @@ function _draw()
 		local draw_start_y=-sprh / 2 + 128/2
 		local draw_start_x=-sprw / 2 + screenx
 
-		if draw_start_x<=127 and draw_start_x>=0 then
-			if lines[flr(draw_start_x)+1]>abs(ty) and ty<0 then
-				sspr(sprite.s*8,0,sprite.w,sprite.h,draw_start_x,draw_start_y,sprw,sprh)
+		if draw_start_x <= 127 and draw_start_x >= 0 then
+			if lines[flr(draw_start_x) + 1] > abs(ty) and ty < 0 then
+				sspr(sprite.s*8, 0, sprite.w, sprite.h, draw_start_x, draw_start_y, sprw, sprh)
 			end
 		end
 
 		map()
 
-		pset(p.x,p.y,2)
-
-		pset(sprite.x,sprite.y,1)
-
-		for _,v in pairs(sprite.path) do
-			x=v[1]*8
-			y=v[2]*8
-			rect(x,y,x+8,y+8,11)
+		for v in all(sprite.path) do
+			local x = v[1] * 8
+			local y = v[2] * 8
+			rect(x, y, x + 8,y + 8, 11)
 		end
+		pset(sprite.x, sprite.y, 1)
+		pset(p.x, p.y, 2)
 	end
 
 	--draw player weapon
-	local ws=2
+	local ws = 2
 	--sspr(8*8,0,16,16,64-8*ws,128-16*ws,ws*16,ws*16)
 
 	--draw minimap
@@ -156,79 +170,82 @@ end
 --pretty naive raycasting
 --should use DDA but this should be good enough for now
 function shoot_ray(x,y,a)
-	local dx=cos(a)
-	local dy=sin(a)
-	local dist=0
-	local hit=false
+	local dx = cos(a)
+	local dy = sin(a)
+	local dist = 0
+	local hit = false
 	while not hit do
-		x+=dx
-		y+=dy
-		dist+=1
-		local s=mget(flr(x/8),flr(y/8))
+		x += dx
+		y += dy
+		dist += 1
+		local s=mget(flr(x / 8), flr(y / 8))
 		if s~=0 then
-			hit=true
-			local cellx=x%8
-			local celly=y%8
-			if abs(cellx)<=1 or abs(cellx-8)<=1 then
-				texpos=celly/8
+			hit = true
+			local cellx = x % 8
+			local celly = y % 8
+			if abs(cellx) <= 1 or abs(cellx - 8) <= 1 then
+				texpos = celly / 8
 			else
-				texpos=cellx/8
+				texpos = cellx / 8
 			end
-			return {x=x,y=y,dist=dist,tex=texpos,s=s}
+			return {x=x, y=y, dist=dist, tex=texpos, s=s}
 		end
 	end
 end
 
--- Slowly move sprite (e.g enemy) towards a point (e.g player)
-function mvspr2pnt(sprite,pnt)
-	local dx=pnt.x-sprite.x
-	local dy=pnt.y-sprite.y
-	local dist=dist(pnt.x,pnt.y,sprite.x,sprite.y)
+-- Slowly move sprite (e.g enemy) towards their goal (e.g player)
+function mvspr2goal(sprite)
+	local dx = sprite.goal[1] * 8 + 4 - sprite.x
+	local dy = sprite.goal[2] * 8 + 4 - sprite.y
+	local dist=sqrt(dx*dx+dy*dy)
 
-	local nx=sprite.x+(dx/dist*sprite.spd)
-	local ny=sprite.y+(dy/dist*sprite.spd)
-	if dist>0 then
-		sprite.x=nx
-		sprite.y=ny
+	if dist <= sprite.spd then
+		sprite.step += 1
+		sprite.x = sprite.goal[1] * 8 + 4
+		sprite.y=sprite.goal[2] * 8 + 4
+	else
+		sprite.x += dx / dist * sprite.spd
+		sprite.y += dy / dist * sprite.spd
 	end
-	local path=astar({sprite.x,sprite.y},{pnt.x,pnt.y})
-	if path~=nil then
-		sprite.path=path
-		local output = ins(path)
-		printh(output)
-	end
+
 end
 
 --A* pathfinding algorithm
 --Starting point as {x,y}, end point as {x,y}
 function astar(spnt,epnt)
-	spnt={flr(spnt[1]/8),flr(spnt[2]/8)}
-	epnt={flr(epnt[1]/8),flr(epnt[2]/8)}
-	printh("spnt: "..ins(spnt))
-	printh("epnt: "..ins(epnt))
+	spnt = {flr(spnt[1] / 8), flr(spnt[2] / 8)}
+	epnt = {flr(epnt[1] / 8), flr(epnt[2] / 8)}
+	-- printh("spnt: "..ins(spnt))
+	-- printh("epnt: "..ins(epnt))
 
-	local open={[pntkey(spnt)]=spnt}
-	local closed={}
+	local open = {[pntkey(spnt)] = spnt}
+	local camefrom={}
 
-	local gscore={[pntkey(spnt)]=0}
-	local fscore={[pntkey(spnt)]=dist(spnt[1],spnt[2],epnt[1],epnt[2])}
+	local gscore = {[pntkey(spnt)] = 0}
+	local fscore = {[pntkey(spnt)] = dist(spnt[1], spnt[2], epnt[1], epnt[2])}
 
 	while next(open) do
-		local currentkey,current=minf(open,fscore)
-		if current[1]==epnt[1] and current[2]==epnt[2] then
-			return closed
+		local currentkey, current=minf(open, fscore)
+		if current[1] == epnt[1] and current[2] == epnt[2] then
+			--found the path, now construct it and return it
+			local path = {}
+			while current do
+				add(path, current)
+				current = camefrom[pntkey(current)]
+			end
+			return path
 		end
 
 		open[currentkey]=nil
-		closed[currentkey]=current
 		for n in all(neighbors(current)) do
-			local nkey=pntkey(n)
-			if not closed[nkey] then
-				g=gscore[currentkey]+dist(current[1],current[2],n[1],n[2])
-				if not open[nkey] or g<gscore[nkey] then
-					gscore[nkey]=g
-					fscore[nkey]=g+dist(n[1],n[2],epnt[1],epnt[2])
-					open[nkey]=n
+			local nkey = pntkey(n)
+			g = gscore[currentkey] + dist(current[1], current[2], n[1], n[2])
+			if g < (gscore[nkey] or 32767) then
+				gscore[nkey] = g
+				fscore[nkey] = g + dist(n[1], n[2], epnt[1], epnt[2])
+				camefrom[nkey] = current
+				if not open[nkey] then
+					open[nkey] = n
 				end
 			end
 		end
@@ -242,36 +259,35 @@ function pntkey(p)
 	return p[1]..','..p[2]
 end
 
-function minf(open,fscore)
-	local minkey,minpnt=nil,nil
-	local min=32767
-	for k,v in pairs(open) do
-		local f=fscore[k] or 32767
-		if f<min then
-			min=f
-			minkey=k
-			minpnt=v
+function minf(open, fscore)
+	local minkey, minpnt = nil, nil
+	local min = 32767
+	for k, v in pairs(open) do
+		local f = fscore[k] or 32767
+		if f < min then
+			min = f
+			minkey = k
+			minpnt = v
 		end
 	end
-	printh("minkey: "..minkey.." minpnt: "..ins(minpnt))
-	return minkey,minpnt
+	return minkey, minpnt
 end
 
 function neighbors(node)
-	local dirs={{1,0},{1,1},{0,1},{-1,1},{-1,0},{-1,-1},{0,-1},{1,-1}}
-	local n={}
+	local dirs = {{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}}
+	local n = {}
 	for p in all(dirs) do
-		local nx=node[1]+p[1]
-		local ny=node[2]+p[2]
-		if mget(nx,ny)==0 then
-			add(n,{nx,ny})
+		local nx = node[1] + p[1]
+		local ny = node[2] + p[2]
+		if mget(nx, ny) == 0 then
+			add(n, {nx, ny})
 		end
 	end
 	return n
 end
 
 function dist(x1,y1,x2,y2)
-	return sqrt((x1-x2)*(x1-x2)+(y1-y2)*(y1-y2))
+	return sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2))
 end
 
 --function dist2col(dist)
@@ -282,27 +298,26 @@ end
 	--return cols[index] or cols[#cols]
 --end
 
-function draw_minimap()
-	clip(0,0,mm.w,mm.h)
-	palt(0,false)
-
-	local sx=flr(mid(-32,(mm.w/2)-p.x,0))
-	local sy=flr(mid(-56,(mm.h/2)-p.y,0))
-	map(0,0,sx,sy)
-
-	--draw player and direction line
-	local px=flr(p.x+sx)
-	local py=flr(p.y+sy)
-
-	local rx=flr(dir_ray.x+sx)
-	local ry=flr(dir_ray.y+sy)
-
-	line(px,py,rx,ry,8)
-	pset(px,py,8)
-	clip()
-	palt()
-end
-
+-- function draw_minimap()
+-- 	clip(0,0,mm.w,mm.h)
+-- 	palt(0,false)
+--
+-- 	local sx=flr(mid(-32,(mm.w/2)-p.x,0))
+-- 	local sy=flr(mid(-56,(mm.h/2)-p.y,0))
+-- 	map(0,0,sx,sy)
+--
+-- 	--draw player and direction line
+-- 	local px=flr(p.x+sx)
+-- 	local py=flr(p.y+sy)
+--
+-- 	local rx=flr(dir_ray.x+sx)
+-- 	local ry=flr(dir_ray.y+sy)
+--
+-- 	line(px,py,rx,ry,8)
+-- 	pset(px,py,8)
+-- 	clip()
+-- 	palt()
+-- end
 __gfx__
 0000000077777777aaa99990aaa99990777777777777777788888999999888888888888008888888800899000000000000000000000000000000000000000000
 0000000077777777a4444440a44444407dddddddddddddd788889e0440e98888888888066088888889989aa80000000000000000000000000000000000000000
@@ -459,9 +474,9 @@ __map__
 0200040000040000000000000000000204000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0200000000000000000000000404040204000000000202000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0200000000000000000000000004040204040400000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0200000000000000000000000000000200000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0200000000000000000004040404000200000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0200000000000000000000000000040200000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0200040000000000000000000000000200000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0200040400000000000004040404000200000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0200000400000000000000000000040200000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0200000000040400000000000000000200000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0200000000000404000000000000000200000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0200000000000004000000000000000200000000000202000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
